@@ -20,4 +20,9 @@
 <h2>How It Works</h2>
 <p>Stealth Note Reader leverages the Windows API to set a display affinity for the application window. This tells the operating system to prevent the window's pixels from being rendered in screen captures. The result is a black or transparent box in the screenshot or recording, while the content remains perfectly visible to you on your monitor.</p>
 
-<h4><a href="https://github.com/rally19/stealth-note-reader/releases/">Download Stealth Note Reader now!</a></h4>
+<img width="1919" height="1079" alt="Screenshot 2025-08-26 233414" src="https://github.com/user-attachments/assets/6b22c7c2-bfca-4fc7-90b2-8ecb122a62b1" />
+
+![WhatsApp Image 2025-08-26 at 23 35 17_57e9f2e2 - Copy](https://github.com/user-attachments/assets/0f3d576e-208e-4635-b471-fecf025a1235)
+
+<h2>Download</h2>
+<h4><a href="https://github.com/rally19/stealth-note-reader/releases/">Download Stealth Note Reader now! Click here!</a></h4>
