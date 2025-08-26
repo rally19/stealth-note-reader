@@ -1,2 +1,7 @@
 *.txt
 *.rtf
+*.json
+/dist
+/build
+snr.spec
+/__pycache__

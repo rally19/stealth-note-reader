@@ -12,7 +12,7 @@ import json
 import ctypes
 from ctypes import wintypes
 
-WINDOW_SIZE = 90
+WINDOW_SIZE = 200
 WDA_NONE = 0x00000000
 WDA_MONITOR = 0x00000001
 WDA_EXCLUDEFROMCAPTURE = 0x00000011
@@ -23,6 +23,18 @@ def set_window_display_affinity(hwnd, affinity):
     result = user32.SetWindowDisplayAffinity(hwnd, affinity)
     if not result:
         raise ctypes.WinError(ctypes.get_last_error())
+
+def is_text_file(file_path):
+    """Check if a file is likely to be a text file by examining its content"""
+    try:
+        with open(file_path, 'rb') as f:
+            chunk = f.read(1024)
+            if not chunk:
+                return False
+            text_characters = sum(1 for byte in chunk if 32 <= byte <= 126 or byte in (9, 10, 13))
+            return text_characters / len(chunk) > 0.7
+    except:
+        return False
 
 class StealthNoteApp:
     def __init__(self, root, file_path=None):
@@ -81,12 +93,25 @@ class StealthNoteApp:
 
     def load_file(self, file_path):
         if file_path and os.path.isfile(file_path):
-            with open(file_path, "r", encoding="utf-8") as file:
-                content = file.read()
-                self.text_area.config(state=tk.NORMAL)
-                self.text_area.delete("1.0", tk.END)
-                self.text_area.insert(tk.END, content)
-                self.text_area.config(state=tk.DISABLED)
+            try:
+                with open(file_path, "r", encoding="utf-8") as file:
+                    content = file.read()
+                    self.text_area.config(state=tk.NORMAL)
+                    self.text_area.delete("1.0", tk.END)
+                    self.text_area.insert(tk.END, content)
+                    self.text_area.config(state=tk.DISABLED)
+            except UnicodeDecodeError:
+                try:
+                    with open(file_path, "r", encoding="latin-1") as file:
+                        content = file.read()
+                        self.text_area.config(state=tk.NORMAL)
+                        self.text_area.delete("1.0", tk.END)
+                        self.text_area.insert(tk.END, content)
+                        self.text_area.config(state=tk.DISABLED)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Could not read file: {str(e)}")
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not read file: {str(e)}")
 
     def apply_theme(self):
         theme = self.themes[self.current_theme]
@@ -104,14 +129,16 @@ class StealthNoteApp:
             self.root.deiconify()
 
     def open_file(self):
-        file_path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt")])
+        file_path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")])
         if file_path:
             self.load_file(file_path)
 
     def drop_file_on_window(self, event):
         path = event.data.strip('{}')
-        if os.path.isfile(path) and path.lower().endswith(".txt"):
+        if os.path.isfile(path) and (path.lower().endswith(".txt") or is_text_file(path)):
             self.load_file(path)
+        else:
+            messagebox.showwarning("Invalid File", "Please drop a valid text file.")
 
     def open_settings(self):
         if hasattr(self, "settings_window") and self.settings_window.winfo_exists():
@@ -120,7 +147,7 @@ class StealthNoteApp:
 
         self.settings_window = tk.Toplevel(self.root)
         self.settings_window.title("Settings")
-        self.settings_window.geometry("400x300")
+        self.settings_window.geometry("300x300")
         self.settings_window.resizable(False, False)
         self.settings_window.config(bg="#F0F0F0")
 
@@ -223,34 +250,52 @@ class StealthNoteApp:
 
     def get_settings_path(self):
         if getattr(sys, 'frozen', False):
-            return os.path.join(os.path.dirname(sys.executable), "settings.json")
+            base_dir = os.path.dirname(sys.executable)
         else:
-            return os.path.join(self.get_base_path(), "settings.json")
+            base_dir = self.get_base_path()
+        
+        config_dir = os.path.join(base_dir, "config")
+        os.makedirs(config_dir, exist_ok=True)
+        
+        return os.path.join(config_dir, "settings.json")
 
     def save_settings(self):
-        settings = {
-            "width": self.root.winfo_width(),
-            "height": self.root.winfo_height(),
-            "font_size": self.font_size,
-            "font_weight": self.font_weight,
-            "theme": self.current_theme,
-            "always_on_top": self.always_on_top
-        }
-        with open(self.get_settings_path(), "w") as f:
-            json.dump(settings, f)
+        try:
+            settings = {
+                "width": self.root.winfo_width(),
+                "height": self.root.winfo_height(),
+                "font_size": self.font_size,
+                "font_weight": self.font_weight,
+                "theme": self.current_theme,
+                "always_on_top": self.always_on_top
+            }
+            settings_path = self.get_settings_path()
+            with open(settings_path, "w") as f:
+                json.dump(settings, f, indent=4)
+        except Exception as e:
+            print(f"Error saving settings: {e}")
 
     def load_settings(self):
         settings_path = self.get_settings_path()
         if os.path.exists(settings_path):
-            with open(settings_path, "r") as f:
-                settings = json.load(f)
-                self.root.geometry(f"{settings['width']}x{settings['height']}")
-                self.font_size = settings["font_size"]
-                self.font_weight = settings["font_weight"]
-                self.current_theme = settings["theme"]
-                self.always_on_top = settings.get("always_on_top", True)
-                self.root.attributes("-topmost", self.always_on_top)
-                self.text_area.config(font=("Arial", self.font_size, self.font_weight))
+            try:
+                with open(settings_path, "r") as f:
+                    settings = json.load(f)
+                    if "width" in settings and "height" in settings:
+                        self.root.geometry(f"{settings['width']}x{settings['height']}")
+                    if "font_size" in settings:
+                        self.font_size = settings["font_size"]
+                    if "font_weight" in settings:
+                        self.font_weight = settings["font_weight"]
+                    if "theme" in settings:
+                        self.current_theme = settings["theme"]
+                    if "always_on_top" in settings:
+                        self.always_on_top = settings["always_on_top"]
+                        self.root.attributes("-topmost", self.always_on_top)
+                    
+                    self.text_area.config(font=("Arial", self.font_size, self.font_weight))
+            except (json.JSONDecodeError, FileNotFoundError) as e:
+                print(f"Error loading settings: {e}")
 
     def add_system_tray(self):
         def quit_app(icon, item):
@@ -278,18 +323,24 @@ class StealthNoteApp:
         threading.Thread(target=self.icon.run, daemon=True).start()
 
     def load_icon(self):
-        if hasattr(sys, '_MEIPASS'):
-            icon_path = os.path.join(sys._MEIPASS, "icon.ico")
-        else:
-            icon_path = "icon.ico"
-        return Image.open(icon_path)
+        try:
+            if hasattr(sys, '_MEIPASS'):
+                icon_path = os.path.join(sys._MEIPASS, "icon.ico")
+            else:
+                icon_path = "icon.ico"
+            return Image.open(icon_path)
+        except:
+            return Image.new('RGB', (64, 64), color='gray')
 
     def set_window_icon(self, window):
-        if hasattr(sys, '_MEIPASS'):
-            icon_path = os.path.join(sys._MEIPASS, "icon.ico")
-        else:
-            icon_path = "icon.ico"
-        window.iconbitmap(icon_path)
+        try:
+            if hasattr(sys, '_MEIPASS'):
+                icon_path = os.path.join(sys._MEIPASS, "icon.ico")
+            else:
+                icon_path = "icon.ico"
+            window.iconbitmap(icon_path)
+        except:
+            pass
 
 class WelcomeWindow:
     def __init__(self, root):
@@ -314,7 +365,7 @@ class WelcomeWindow:
         ttk.Button(root, text="Continue", command=self.continue_app).pack(pady=10)
 
         def open_link(event):
-            webbrowser.open_new("https://github.com/rally19")
+            webbrowser.open_new("https://rally19.github.io/")
 
         label = ttk.Label(root, text="Made by rally19", font=("Segoe UI", 10), foreground="blue", cursor="hand2")
         label.pack(side=tk.BOTTOM)
@@ -325,14 +376,14 @@ class WelcomeWindow:
 
     def drop_file(self, event):
         path = event.data.strip('{}')
-        if os.path.isfile(path) and path.lower().endswith(".txt"):
+        if os.path.isfile(path) and (path.lower().endswith(".txt") or is_text_file(path)):
             self.file_path = path
             self.file_label.config(text=os.path.basename(self.file_path))
         else:
-            messagebox.showerror("Invalid File", "Please drop a valid .txt file.")
+            messagebox.showerror("Invalid File", "Please drop a valid text file.")
 
     def select_file(self):
-        self.file_path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt")])
+        self.file_path = filedialog.askopenfilename(filetypes=[("Text Files", "*.txt"), ("All Files", "*.*")])
         if self.file_path:
             self.file_label.config(text=os.path.basename(self.file_path))
 
@@ -343,21 +394,24 @@ class WelcomeWindow:
             StealthNoteApp(main_root, self.file_path)
             main_root.mainloop()
         else:
-            messagebox.showwarning("No File Selected", "Please select a .txt file before continuing.")
+            messagebox.showwarning("No File Selected", "Please select a text file before continuing.")
 
     def set_window_icon(self, window):
-        if hasattr(sys, '_MEIPASS'):
-            icon_path = os.path.join(sys._MEIPASS, "icon.ico")
-        else:
-            icon_path = "icon.ico"
-        window.iconbitmap(icon_path)
+        try:
+            if hasattr(sys, '_MEIPASS'):
+                icon_path = os.path.join(sys._MEIPASS, "icon.ico")
+            else:
+                icon_path = "icon.ico"
+            window.iconbitmap(icon_path)
+        except:
+            pass
 
 if __name__ == "__main__":
     file_path = None
     if len(sys.argv) > 1:
         file_path = sys.argv[1]
 
-    if file_path and os.path.isfile(file_path) and file_path.lower().endswith(".txt"):
+    if file_path and os.path.isfile(file_path) and (file_path.lower().endswith(".txt") or is_text_file(file_path)):
         main_root = TkinterDnD.Tk()
         StealthNoteApp(main_root, file_path)
         main_root.mainloop()
@@ -366,4 +420,4 @@ if __name__ == "__main__":
         WelcomeWindow(welcome_root)
         welcome_root.mainloop()
 
-# Made by Leonel R.
+# Made by Leonel R. S.
