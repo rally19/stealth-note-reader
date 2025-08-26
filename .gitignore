@@ -1,7 +1,10 @@
 *.txt
 *.json
+*.rtf
+*.iss
+*.spec
+/output
 /dist
 /build
-snr.spec
 /__pycache__
 /config
